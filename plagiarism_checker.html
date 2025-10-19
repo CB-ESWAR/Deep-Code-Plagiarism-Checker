@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Plagiarism Checker</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Custom styling to ensure text areas look like code editors -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        /* Custom scrollbar for textareas */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #27272a; /* Z-800 */
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #52525b; /* Z-600 */
+            border-radius: 4px;
+        }
+        textarea {
+            resize: none;
+            line-height: 1.5;
+            font-family: monospace;
+        }
+        /* Keyframes for the dynamic pulse effect */
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 20px 5px rgba(239, 68, 68, 1); }
+        }
+        @keyframes pulse-yellow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7); }
+            50% { box-shadow: 0 0 15px 4px rgba(251, 191, 36, 1); }
+        }
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            50% { box-shadow: 0 0 10px 3px rgba(16, 185, 129, 1); }
+        }
+        
+        .pulse-red { animation: pulse-red 2s infinite; }
+        .pulse-yellow { animation: pulse-yellow 2s infinite; }
+        .pulse-green { animation: pulse-green 2s infinite; }
+
+        /* Styling for the circular progress bar (SVG container) */
+        .circular-progress {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+        .circular-progress circle {
+            transition: stroke-dashoffset 1s ease-in-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="text-center mb-8 sm:mb-12">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 leading-tight">
+                Code Similarity Analyzer (Deep Analysis)
+            </h1>
+            <p class="text-lg text-gray-600 mt-2">
+                Enhanced Jaccard Similarity and K-Shingling for detecting **intense structural plagiarism**.
+            </p>
+        </header>
+
+        <!-- Main Comparison Area -->
+        <div class="grid md:grid-cols-2 gap-6 mb-8">
+            <!-- Code Block 1 -->
+            <div class="bg-white rounded-xl shadow-2xl p-4 transition duration-300 hover:shadow-3xl">
+                <label for="code1" class="block text-sm font-medium text-gray-700 mb-2">Code Snippet 1 (Source)</label>
+                <textarea id="code1" rows="15" class="w-full p-3 bg-zinc-800 text-white text-sm rounded-lg border border-zinc-700 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150" placeholder="Paste the first block of code here..."></textarea>
+            </div>
+
+            <!-- Code Block 2 -->
+            <div class="bg-white rounded-xl shadow-2xl p-4 transition duration-300 hover:shadow-3xl">
+                <label for="code2" class="block text-sm font-medium text-gray-700 mb-2">Code Snippet 2 (Comparison)</label>
+                <textarea id="code2" rows="15" class="w-full p-3 bg-zinc-800 text-white text-sm rounded-lg border border-zinc-700 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150" placeholder="Paste the second block of code here..."></textarea>
+            </div>
+        </div>
+
+        <!-- Settings and Action Bar -->
+        <div class="flex flex-col sm:flex-row items-center justify-between bg-white p-4 rounded-xl shadow-lg border-t border-gray-200 mb-8">
+            <div class="flex items-center space-x-4 mb-4 sm:mb-0">
+                <label for="kSize" class="text-gray-700 text-sm font-medium">K-Shingle Size:</label>
+                <input type="number" id="kSize" value="5" min="2" max="100" class="w-20 p-2 border border-gray-300 rounded-lg text-center focus:ring-indigo-500 focus:border-indigo-500" />
+            </div>
+            
+            <button onclick="checkPlagiarism()" id="checkBtn" class="w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white font-semibold rounded-full shadow-lg hover:bg-indigo-700 transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 flex items-center justify-center">
+                <svg id="spinner" class="animate-spin -ml-1 mr-3 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span id="btnText">Check Similarity</span>
+            </button>
+        </div>
+
+        <!-- Result Display -->
+        <div id="resultContainer" class="bg-white rounded-xl shadow-2xl p-8 transition-all duration-500 ease-out min-h-[250px] flex flex-col items-center justify-center">
+            
+            <!-- Circular Progress SVG -->
+            <div id="progressDisplay" class="hidden flex flex-col items-center justify-center">
+                <div class="circular-progress relative">
+                    <svg class="w-full h-full" viewBox="0 0 100 100">
+                        <!-- Background circle -->
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="#e0e0e0" stroke-width="6"></circle>
+                        <!-- Foreground circle - will be colored dynamically -->
+                        <circle id="progressCircle" cx="50" cy="50" r="45" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="282.7" stroke-dashoffset="282.7" stroke="#4f46e5"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                        <h2 id="resultPercentage" class="text-6xl font-extrabold text-gray-900 leading-none">0%</h2>
+                        <p class="text-sm font-medium text-gray-500 mt-1">Similarity</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Initial Text -->
+            <p id="resultText" class="text-xl text-gray-500 font-medium transition-all duration-300 ease-out">Enter two code snippets and click 'Check Similarity' to see the result.</p>
+        </div>
+    </div>
+
+    <script>
+        // --- Core Algorithm Functions (Adapted from C++ Logic) ---
+
+        /**
+         * Enhanced normalization for deep plagiarism detection:
+         * 1. Removes comments.
+         * 2. Replaces all variable/function names with a placeholder token 'V'.
+         * 3. Replaces all numbers/literals with a placeholder token 'N'.
+         * 4. Replaces all strings with a placeholder token 'S'.
+         * 5. Converts code to a stream of tokens, preserving structure.
+         * @param {string} code - The raw code snippet.
+         * @returns {string} - The deeply normalized token stream.
+         */
+        function normalizeCode(code) {
+            // 1. Remove comments
+            let normalized = code.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, ''); 
+            
+            // 2. Remove string literals (must be done before other replacements)
+            // Replaces "..." and '...' with token S
+            normalized = normalized.replace(/("|').*?(\1)/g, ' S ');
+            
+            // 3. Remove number literals
+            // Replaces any number (integer, float) with token N
+            normalized = normalized.replace(/\b\d+(\.\d+)?\b/g, ' N ');
+
+            // 4. Tokenize and simplify
+            // Convert to lowercase
+            normalized = normalized.toLowerCase();
+
+            // Replace common structural keywords with simplified forms for language independence
+            normalized = normalized.replace(/\b(function|method|func|def)\b/g, ' func ');
+            normalized = normalized.replace(/\b(const|let|var)\b/g, ' var ');
+            normalized = normalized.replace(/\b(class|struct)\b/g, ' class ');
+            normalized = normalized.replace(/\b(public|private|protected)\b/g, ' access ');
+            
+            // 5. Replace identifiers (everything left that isn't a reserved word or token) with 'V'
+            // This is a common heuristic: find words (sequences of letters/numbers not already replaced)
+            // Exclude common keywords that we want to keep for structural detection (if|while|return, etc., and tokens s, n, v)
+            const keywords = /\b(if|else|switch|case|default|for|while|do|break|continue|return|try|catch|finally|throw|new|this|super|import|export|from|to|as|in|of|var|func|class|access|s|n|v)\b/g;
+
+            // Step 5a: Replace all variable/function names that are NOT keywords/tokens with 'V'
+            // We ensure variable names are space-separated from everything else first for clean tokenization
+            normalized = normalized.replace(/[a-z_][a-z0-9_]+/g, (match) => {
+                if (match.match(keywords)) {
+                    return match; // Keep keywords
+                }
+                return ' V '; // Replace custom identifiers with V (Variable)
+            });
+
+            // 6. Final cleanup: replace all non-alphanumeric/non-keyword characters with a single space
+            // This cleans up symbols like .,:;=+-*/ and ensures clear token separation
+            normalized = normalized.replace(/[^a-z0-9]/g, ' '); 
+
+            // 7. Reduce multiple spaces to single space and trim
+            normalized = normalized.replace(/\s+/g, '').trim();
+
+            return normalized;
+        }
+
+        /**
+         * Generates a set of unique K-Shingle hashes from the normalized text.
+         * @param {string} text - The normalized code string.
+         * @param {number} k - The shingle size.
+         * @returns {Set<string>} - A set of unique shingle substrings.
+         */
+        function getShingles(text, k) {
+            const shingles = new Set();
+            if (text.length < k) {
+                return shingles;
+            }
+
+            for (let i = 0; i <= text.length - k; i++) {
+                const shingle = text.substring(i, i + k);
+                // We use the shingle itself as the 'hash' for simplicity and speed in JS
+                shingles.add(shingle);
+            }
+            return shingles;
+        }
+
+        /**
+         * Calculates the Jaccard Similarity Coefficient between two sets of shingles.
+         * J(A, B) = |A ∩ B| / |A ∪ B|
+         * @param {Set<string>} shingles1 - Shingle set of the first code block.
+         * @param {Set<string>} shingles2 - Shingle set of the second code block.
+         * @returns {number} - The similarity score (0.0 to 1.0).
+         */
+        function calculateJaccardSimilarity(shingles1, shingles2) {
+            if (shingles1.size === 0 && shingles2.size === 0) return 1.0;
+
+            let intersectionSize = 0;
+            
+            // Iterate over the smaller set for efficiency
+            const [smaller, larger] = shingles1.size < shingles2.size 
+                ? [shingles1, shingles2] 
+                : [shingles2, shingles1];
+
+            for (const shingle of smaller) {
+                if (larger.has(shingle)) {
+                    intersectionSize++;
+                }
+            }
+
+            const unionSize = shingles1.size + shingles2.size - intersectionSize;
+
+            if (unionSize === 0) return 0.0;
+
+            return intersectionSize / unionSize;
+        }
+
+        // --- UI & Control Functions ---
+
+        const resultContainer = document.getElementById('resultContainer');
+        const resultText = document.getElementById('resultText');
+        const resultPercentage = document.getElementById('resultPercentage');
+        const progressDisplay = document.getElementById('progressDisplay');
+        const progressCircle = document.getElementById('progressCircle');
+        const checkBtn = document.getElementById('checkBtn');
+        const btnText = document.getElementById('btnText');
+        const spinner = document.getElementById('spinner');
+
+        // Animation helper function for counting up
+        function animateValue(obj, start, end, duration) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                obj.textContent = Math.floor(progress * (end - start) + start).toFixed(0) + '%';
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                }
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        // Main function triggered by the button click
+        function checkPlagiarism() {
+            const code1 = document.getElementById('code1').value;
+            const code2 = document.getElementById('code2').value;
+            const kSize = parseInt(document.getElementById('kSize').value, 10) || 5;
+
+            // Input Validation
+            if (!code1.trim() || !code2.trim()) {
+                resultText.textContent = "Error: Please paste code into both input boxes to compare.";
+                resultText.className = "text-xl text-red-600 font-bold";
+                progressDisplay.classList.add('hidden');
+                resultText.classList.remove('hidden');
+                return;
+            }
+
+            // UI State: Loading & Initial Reset
+            checkBtn.disabled = true;
+            btnText.textContent = 'Analyzing...';
+            spinner.classList.remove('hidden');
+            resultText.textContent = "Calculating similarity...";
+            resultText.className = "text-xl text-gray-500 font-medium transition-all duration-300 ease-out";
+            resultText.classList.remove('hidden');
+            progressDisplay.classList.add('hidden');
+
+            // Remove previous pulse and color classes
+            resultContainer.classList.remove('pulse-red', 'pulse-yellow', 'pulse-green', 'bg-red-100', 'bg-yellow-100', 'bg-green-100', 'bg-white');
+            resultContainer.classList.add('bg-white');
+
+            // Reset progress circle
+            progressCircle.style.strokeDashoffset = '282.7';
+            resultPercentage.textContent = '0%';
+            
+            // Use a delay to allow the loading spinner to render before computation starts
+            setTimeout(() => {
+                try {
+                    // 1. Normalize
+                    const normalized1 = normalizeCode(code1);
+                    const normalized2 = normalizeCode(code2);
+
+                    if (normalized1.length < kSize || normalized2.length < kSize) {
+                         throw new Error(`K-Shingle size (${kSize}) is too large for one or both code snippets after deep normalization.`);
+                    }
+
+                    // 2. K-Shingle Generation
+                    const shingles1 = getShingles(normalized1, kSize);
+                    const shingles2 = getShingles(normalized2, kSize);
+                    
+                    // 3. Jaccard Similarity Calculation
+                    const similarity = calculateJaccardSimilarity(shingles1, shingles2);
+                    
+                    // 4. Report Result
+                    const percentage = (similarity * 100);
+                    
+                    // Display the progress animation
+                    progressDisplay.classList.remove('hidden');
+                    resultText.classList.add('hidden');
+                    updateResultDisplay(percentage, similarity);
+
+                } catch (error) {
+                    console.error("Error during analysis:", error);
+                    resultText.textContent = `Analysis failed: ${error.message}`;
+                    resultText.className = "text-xl text-red-600 font-bold";
+                    resultText.classList.remove('hidden');
+                    progressDisplay.classList.add('hidden');
+
+                } finally {
+                    // UI State: Complete
+                    checkBtn.disabled = false;
+                    btnText.textContent = 'Check Similarity';
+                    spinner.classList.add('hidden');
+                }
+            }, 50); // Short delay to ensure UI updates are seen
+        }
+
+        /**
+         * Updates the UI with the final percentage and color codes the result.
+         * @param {number} percentage - The raw percentage score (0 to 100).
+         * @param {number} similarity - The raw similarity score (0.0 to 1.0).
+         */
+        function updateResultDisplay(percentage, similarity) {
+            let bgColorClass;
+            let textColorClass;
+            let resultMessage;
+            let ringColor;
+            let pulseClass;
+
+            // Set colors and messages based on threshold
+            if (similarity >= 0.8) {
+                ringColor = '#ef4444'; // Red-500
+                textColorClass = 'text-red-700';
+                bgColorClass = 'bg-red-100';
+                pulseClass = 'pulse-red';
+                resultMessage = 'HIGH PLAGIARISM RISK: These snippets are highly similar and warrant immediate review.';
+            } else if (similarity >= 0.5) {
+                ringColor = '#f59e0b'; // Yellow-500
+                textColorClass = 'text-yellow-700';
+                bgColorClass = 'bg-yellow-100';
+                pulseClass = 'pulse-yellow';
+                resultMessage = 'MODERATE SIMILARITY: Review for potential overlapping structural patterns.';
+            } else {
+                ringColor = '#10b981'; // Green-500
+                textColorClass = 'text-green-700';
+                bgColorClass = 'bg-green-100';
+                pulseClass = 'pulse-green';
+                resultMessage = 'LOW SIMILARITY: The code snippets appear to be substantially different.';
+            }
+            
+            // 1. Update container color and pulse animation
+            resultContainer.classList.add(bgColorClass, pulseClass);
+            
+            // 2. Update progress circle color and value
+            const circumference = 282.7; // 2 * PI * 45
+            const offset = circumference - (percentage / 100) * circumference;
+
+            progressCircle.style.stroke = ringColor;
+            progressCircle.style.strokeDashoffset = offset;
+            
+            // 3. Animate the percentage count-up
+            animateValue(resultPercentage, 0, percentage.toFixed(0), 700);
+
+            // 4. Update descriptive text (show after animation completes)
+            setTimeout(() => {
+                // Remove pulse after showing the final result
+                resultContainer.classList.remove(pulseClass);
+                
+                resultText.textContent = resultMessage;
+                resultText.className = `text-xl ${textColorClass} font-medium mt-4 transition-all duration-300 ease-out`;
+                resultText.classList.remove('hidden');
+                progressDisplay.classList.remove('hidden');
+            }, 800); // Wait for count-up animation
+        }
+
+        // Example content for quick testing
+        // This example shows a high similarity score even with different variable names AND different literal values.
+        window.onload = () => {
+             document.getElementById('code1').value = `
+                function calculateArea(r) { 
+                    const PI_VAL = 3.14159; 
+                    return PI_VAL * r * r; 
+                } 
+             `;
+             document.getElementById('code2').value = `
+                // This is a comment
+                const getCircleArea = (radius_param) => { 
+                    let pi_constant = 3.0; // Changed the literal value
+                    return pi_constant * radius_param * radius_param; 
+                }; 
+             `;
+             checkPlagiarism(); // Run initial check
+        }
+    </script>
+</body>
+</html>
